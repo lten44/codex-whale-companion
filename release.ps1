@@ -38,6 +38,8 @@ foreach ($name in @('WhaleCompanion.exe.config', '启动鲸鱼娘.cmd', '使用�
 $assetFiles = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'assets') -File -Filter '*.png')
 if ($assetFiles.Count -ne 92) { throw 'Expected the 92 licensed character assets' }
 foreach ($file in $assetFiles) { $portable['assets/' + $file.Name] = $file.FullName }
+$portable['assets/carrot/sprites.png'] = Join-Path $projectRoot 'assets/carrot/sprites.png'
+$portable['assets/carrot/SOURCE.md'] = Join-Path $projectRoot 'assets/carrot/SOURCE.md'
 foreach ($file in (Get-ChildItem -LiteralPath (Join-Path $projectRoot 'licenses') -File -Filter '*.txt')) { $portable['licenses/' + $file.Name] = $file.FullName }
 
 $source = [ordered]@{}

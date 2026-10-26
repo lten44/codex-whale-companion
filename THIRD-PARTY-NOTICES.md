@@ -27,6 +27,10 @@
 
 [Apple Human Interface Guidelines — Materials](https://developer.apple.com/design/human-interface-guidelines/materials)：参考材质层级、克制强调和可读性原则。界面用 WPF 自行实现，没有使用 Apple 的图标、字体文件或品牌素材；不是 Apple 原生 Liquid Glass。
 
+## 胡萝卜皮肤（非官方二创）
+
+形象参考 STAYREAL 卜卜胡萝卜周边：https://hkmall.istayreal.com/products/lk24003 。图集由 AI 辅助生成，包含 12 款独立表情。未使用五月天音乐、商品摄影文件或官方商标。代码的 MIT 许可不授予原角色权利，详见 [皮肤来源说明](assets/carrot/SOURCE.md)。
+
 ## 系统组件
 
 使用 Windows 自带的 .NET Framework 4.8、WPF、Windows Forms 托盘及系统字体，不随发行包重新分发这些组件。字体按使用者电脑上已安装的字体显示。

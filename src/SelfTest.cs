@@ -27,6 +27,14 @@ namespace WhaleCompanion
             try
             {
                 var m = new SessionMetrics(); m.Apply(Start("one")); m.Apply(Usage(1000, 800, 100));
+                var oldPrefs = Json.Serializer().Deserialize<Preferences>("{\"X\":123,\"Y\":456,\"Scale\":0.85}");
+                Check(oldPrefs.Skin == "whale" && oldPrefs.X == 123 && oldPrefs.Scale == 0.85, "old preferences retain placement and default whale skin");
+                oldPrefs.Skin = "carrot";
+                var restored = Json.Serializer().Deserialize<Preferences>(Json.Serializer().Serialize(oldPrefs));
+                Check(restored.Skin == "carrot" && restored.X == 123 && restored.Y == 456, "selected skin persists with placement");
+                Check(Skins.Normalize(null) == "whale" && Skins.Normalize("unknown") == "whale", "unknown skin uses supported default");
+                for (int i = 0; i < Skins.Poses.Length; i++) Check(Skins.Frame(Skins.Poses[i]) == i, "carrot distinct pose " + i);
+                Check(Skins.Frame("tool") == 5 && Skins.Frame("react-head") == 3 && Skins.Frame("star") == 9, "production work and touch actions map to carrot emotions");
                 m.Apply(Item("one", "a", "Reasoning", 1000, 3000)); m.Apply(Item("one", "b", "AgentMessage", 2000, 5000));
                 Check(Math.Abs(m.Speed.Value - 25) < 0.0001, "overlapping model intervals count once");
                 Check(m.Total == 1100 && m.CachePercent == 80, "cache is subset of input");

@@ -30,6 +30,7 @@ namespace WhaleCompanion
         public bool ReferencePricing;
         public double InputPerMillion, CachedPerMillion, OutputPerMillion;
         public string Currency = "USD";
+        public string Skin = "whale";
     }
 
     internal static class Program
@@ -71,6 +72,7 @@ namespace WhaleCompanion
                         catch (InvalidOperationException) { StartupWarning = "设置无法读取，已使用默认值。"; }
                     }
                     Prefs.Scale = Glide.Clamp(Prefs.Scale, 0.65, 1.25);
+                    Prefs.Skin = Skins.Normalize(Prefs.Skin);
                     string home = Environment.GetEnvironmentVariable("CODEX_HOME");
                     if (String.IsNullOrWhiteSpace(home)) home = DefaultCodexHome();
                     if (!String.IsNullOrWhiteSpace(Prefs.CodexHome)) home = Prefs.CodexHome;
@@ -107,7 +109,8 @@ namespace WhaleCompanion
         private readonly Canvas viewport = new Canvas { ClipToBounds = true };
         private Viewbox viewbox;
         private readonly Canvas particles = new Canvas { Width = WidgetWidth, Height = WidgetHeight, IsHitTestVisible = false };
-        private readonly Dictionary<string, BitmapImage> images = new Dictionary<string, BitmapImage>();
+        private readonly Dictionary<string, BitmapSource> images = new Dictionary<string, BitmapSource>();
+        private BitmapImage carrotAtlas;
         private readonly Image pet = new Image { Width = PetSize, Height = PetSize, Stretch = Stretch.Uniform, Cursor = Cursors.Hand };
         private readonly ScaleTransform petScale = new ScaleTransform(1, 1);
         private readonly RotateTransform petRotation = new RotateTransform();
@@ -254,14 +257,37 @@ namespace WhaleCompanion
             stage.Children.Add(particles);
         }
 
-        private BitmapImage ImageFor(string pose)
+        private BitmapSource ImageFor(string pose)
         {
-            BitmapImage image;
-            if (images.TryGetValue(pose, out image)) return image;
+            string key = Program.Prefs.Skin + ":" + (Program.Prefs.Skin == "carrot" ? Skins.Frame(pose).ToString() : pose);
+            BitmapSource cached;
+            if (images.TryGetValue(key, out cached)) return cached;
+            if (Program.Prefs.Skin == "carrot")
+            {
+                if (carrotAtlas == null)
+                {
+                    carrotAtlas = new BitmapImage(); carrotAtlas.BeginInit(); carrotAtlas.CacheOption = BitmapCacheOption.OnLoad;
+                    carrotAtlas.UriSource = new Uri(System.IO.Path.Combine(Program.Root, "assets", "carrot", "sprites.png")); carrotAtlas.EndInit(); carrotAtlas.Freeze();
+                    if (carrotAtlas.PixelWidth % 4 != 0 || carrotAtlas.PixelHeight % 3 != 0 || carrotAtlas.PixelWidth / 4 != carrotAtlas.PixelHeight / 3)
+                        throw new InvalidDataException("胡萝卜图集必须为 4×3 等大正方形网格。");
+                }
+                int cell = carrotAtlas.PixelWidth / 4, frame = Skins.Frame(pose);
+                var cropped = new CroppedBitmap(carrotAtlas, new Int32Rect(frame % 4 * cell, frame / 4 * cell, cell, cell)); cropped.Freeze();
+                images.Add(key, cropped); return cropped;
+            }
             string path = System.IO.Path.Combine(Program.Root, "assets", "dsh-whale-state-" + pose + ".png");
             if (!File.Exists(path)) throw new FileNotFoundException("缺少鲸鱼娘素材：" + pose, path);
-            image = new BitmapImage(); image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad;
-            image.UriSource = new Uri(path); image.EndInit(); image.Freeze(); images.Add(pose, image); return image;
+            var image = new BitmapImage(); image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad;
+            image.UriSource = new Uri(path); image.EndInit(); image.Freeze(); images.Add(key, image); return image;
+        }
+        private void ChangeSkin(string skin)
+        {
+            string next = Skins.Normalize(skin), previous = Program.Prefs.Skin;
+            Program.Prefs.Skin = next;
+            try { ImageFor("greet"); }
+            catch { Program.Prefs.Skin = previous; throw; }
+            currentPose = requestedPose = ""; interactionPose = "greet"; interactionUntil = clock.Elapsed.TotalSeconds + 3;
+            SetPose("greet", true); ShowSpeech(next == "carrot" ? "本卜上线！今天也要一起加油！" : "本鲸回来啦！", 4); MarkSave();
         }
         private void SetPose(string pose, bool immediate)
         {
@@ -272,7 +298,7 @@ namespace WhaleCompanion
             else { squeeze.Velocity -= 1.4; swapAt = clock.Elapsed.TotalSeconds + 0.075; }
         }
         private void ShowSpeech(string words, double seconds)
-        { speech.Text = words; speechShownAt = clock.Elapsed.TotalSeconds; speechUntil = speechShownAt + seconds; bubble.Opacity = 0; bubble.Visibility = String.IsNullOrWhiteSpace(words) ? Visibility.Hidden : Visibility.Visible; }
+        { speech.Text = Program.Prefs.Skin == "carrot" ? words.Replace("本鲸", "本卜") : words; speechShownAt = clock.Elapsed.TotalSeconds; speechUntil = speechShownAt + seconds; bubble.Opacity = 0; bubble.Visibility = String.IsNullOrWhiteSpace(words) ? Visibility.Hidden : Visibility.Visible; }
         private void Interact(string pose, string words, double seconds)
         {
             interactionPose = pose; interactionUntil = clock.Elapsed.TotalSeconds + seconds; SetPose(pose, false);
@@ -526,12 +552,17 @@ namespace WhaleCompanion
         private void OpenMenu()
         {
             var menu = new ContextMenu { FontFamily = FontFamily, FontSize = 12, Background = Brush("#FAFAFC"), BorderBrush = Brush("#DCE0E7"), BorderThickness = new Thickness(1), Padding = new Thickness(5) };
+            var skins = new MenuItem { Header = "切换皮肤" };
+            skins.Items.Add(Item("鲸鱼娘 · 89 款表情", delegate { ChangeSkin("whale"); }, Program.Prefs.Skin == "whale"));
+            skins.Items.Add(Item("胡萝卜 · 12 款表情（二创）", delegate { ChangeSkin("carrot"); }, Program.Prefs.Skin == "carrot"));
+            menu.Items.Add(skins); menu.Items.Add(new Separator());
             menu.Items.Add(Item("摸摸头", delegate { Interact("react-head", "今天也辛苦啦，摸摸！", 4); }, null));
             menu.Items.Add(Item("投喂一碗白饭", delegate { Interact("eat", "啊呜……本鲸还能再吃一碗！", 5); }, null));
             menu.Items.Add(Item("夸夸她", delegate { Interact("star", "本鲸当然很厉害啦！", 4); }, null));
             var poses = new MenuItem { Header = "更多表情和动作" };
             string[] names = { "喝咖啡", "伸懒腰", "挥手", "眨眼", "害羞", "小得意", "生气", "睡觉", "摸鱼", "玩游戏", "撒娇", "庆祝" };
             string[] keys = { "daily-coffee", "daily-stretch", "greet", "wink", "blush", "meme-smug", "angry", "sleep", "daily-fishing", "daily-gaming", "meme-heart", "celebrate" };
+            if (Program.Prefs.Skin == "carrot") { names = Skins.Names; keys = Skins.Poses; }
             for (int i = 0; i < keys.Length; i++) { string key = keys[i], name = names[i]; poses.Items.Add(Item(name, delegate { Interact(key, name + "中的本鲸也很可爱！", 6); }, null)); }
             var gallery = new MenuItem { Header = "全部 89 款表情立绘" };
             foreach (string file in Directory.GetFiles(System.IO.Path.Combine(Program.Root, "assets"), "dsh-whale-*.png").OrderBy(x => x))
@@ -540,11 +571,11 @@ namespace WhaleCompanion
                 if (key.StartsWith("dsh-whale-")) continue;
                 gallery.Items.Add(Item(key, delegate { Interact(key, "", 7); }, null));
             }
-            poses.Items.Add(gallery); menu.Items.Add(poses); menu.Items.Add(new Separator());
+            if (Program.Prefs.Skin == "whale") poses.Items.Add(gallery); menu.Items.Add(poses); menu.Items.Add(new Separator());
             menu.Items.Add(Item("拖动后轻微惯性", delegate { Program.Prefs.Inertia = !Program.Prefs.Inertia; glide.Vx = glide.Vy = 0; MarkSave(); }, Program.Prefs.Inertia));
             menu.Items.Add(Item("固定当前位置（禁止拖动）", delegate { Program.Prefs.Locked = !Program.Prefs.Locked; glide.Vx = glide.Vy = 0; MarkSave(); RefreshMetrics(); }, Program.Prefs.Locked));
             menu.Items.Add(Item("安静模式（减少动效）", delegate { Program.Prefs.Quiet = !Program.Prefs.Quiet; MarkSave(); }, Program.Prefs.Quiet));
-            menu.Items.Add(Item("只显示鲸鱼娘", delegate { Program.Prefs.Compact = !Program.Prefs.Compact; ApplyPreferences(); }, Program.Prefs.Compact));
+            menu.Items.Add(Item("只显示桌宠", delegate { Program.Prefs.Compact = !Program.Prefs.Compact; ApplyPreferences(); }, Program.Prefs.Compact));
             var sizes = new MenuItem { Header = "大小" };
             foreach (double s in new double[] { 0.85, 1, 1.15, 1.25 }) { double value = s; sizes.Items.Add(Item((s * 100).ToString("0") + "%" + (s == 1 ? " · 推荐" : s == 0.85 ? " · 迷你" : ""), delegate { Program.Prefs.Scale = value; ApplyPreferences(); Dispatcher.BeginInvoke(new Action(delegate { ClampToScreen(); MoveNative(); })); }, Program.Prefs.Scale == s)); }
             menu.Items.Add(sizes);
@@ -654,7 +685,7 @@ namespace WhaleCompanion
             Native.Rect rect; Native.GetWindowRect(handle, out rect); var m = monitor.Current;
             string json = Json.Serializer().Serialize(new { updated = DateTime.Now.ToString("o"),
                 visible = Native.IsWindowVisible(handle), x = rect.Left, y = rect.Top, width = rect.Right - rect.Left, height = rect.Bottom - rect.Top,
-                pose = currentPose, source = System.IO.Path.GetFileName(monitor.SelectedPath),
+                skin = Program.Prefs.Skin, pose = currentPose, source = System.IO.Path.GetFileName(monitor.SelectedPath),
                 model = m == null ? null : m.Model, state = m == null ? null : m.State,
                 speed = m == null ? null : m.Speed, totalTokens = m == null ? 0 : m.Total, error = monitor.Error });
             try { File.WriteAllText(System.IO.Path.Combine(Program.Root, "运行状态.json"), json); }
@@ -666,6 +697,7 @@ namespace WhaleCompanion
         {
             File.WriteAllText(System.IO.Path.Combine(Program.Root, "ui-check-result.txt"), "RUNNING");
             var checks = new List<string>();
+            Program.Prefs.Skin = "whale";
             foreach (string path in Directory.GetFiles(System.IO.Path.Combine(Program.Root, "assets"), "dsh-whale-state-*.png"))
             {
                 string pose = System.IO.Path.GetFileNameWithoutExtension(path).Replace("dsh-whale-state-", "");
@@ -739,6 +771,31 @@ namespace WhaleCompanion
             var miniEncoder = new PngBitmapEncoder(); miniEncoder.Frames.Add(BitmapFrame.Create(mini));
             using (var stream = File.Create(System.IO.Path.Combine(Program.Root, "迷你预览.png"))) miniEncoder.Save(stream);
             checks.Add("PASS mini export at 272x150 logical pixels");
+            int savedX = Program.Prefs.X, savedY = Program.Prefs.Y;
+            double savedGlideX = glide.X, savedGlideY = glide.Y;
+            var savedMetrics = monitor.Current;
+            ChangeSkin("carrot");
+            foreach (string pose in Skins.Poses)
+            {
+                var source = ImageFor(pose);
+                if (source.PixelWidth != 362 || source.PixelHeight != 362) throw new InvalidOperationException("胡萝卜帧尺寸错误");
+            }
+            if (Program.Prefs.X != savedX || Program.Prefs.Y != savedY || glide.X != savedGlideX || glide.Y != savedGlideY || monitor.Current != savedMetrics)
+                throw new InvalidOperationException("换肤修改了位置或统计会话");
+            checks.Add("PASS switching skins preserves placement and metrics; all 12 carrot frames load");
+            Program.Prefs.Scale = 1; ApplyPreferences(); SetPose("idle-cute", true); bubble.Visibility = Visibility.Hidden; UpdateLayout();
+            var carrot = new RenderTargetBitmap(WidgetWidth, WidgetHeight, 96, 96, PixelFormats.Pbgra32); carrot.Render(stage);
+            var carrotEncoder = new PngBitmapEncoder(); carrotEncoder.Frames.Add(BitmapFrame.Create(carrot));
+            using (var stream = File.Create(System.IO.Path.Combine(Program.Root, "胡萝卜预览.png"))) carrotEncoder.Save(stream);
+            string carrotDir = System.IO.Path.Combine(Program.Root, "carrot-frames"); Directory.CreateDirectory(carrotDir);
+            for (int i = 0; i < Skins.Poses.Length; i++)
+            {
+                var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(ImageFor(Skins.Poses[i])));
+                using (var stream = File.Create(System.IO.Path.Combine(carrotDir, i.ToString("00") + ".png"))) png.Save(stream);
+            }
+            ChangeSkin("whale");
+            if (Program.Prefs.Skin != "whale" || ImageFor("greet").PixelWidth != 512) throw new InvalidOperationException("切回鲸鱼娘失败");
+            checks.Add("PASS switch back restores original whale art; exported actual carrot UI and 12 frames");
             File.WriteAllLines(System.IO.Path.Combine(Program.Root, "ui-check-result.txt"), checks);
         }
     }
