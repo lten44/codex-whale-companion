@@ -1,0 +1,32 @@
+# Runtime state belongs to each person, never to the public repository.
+/settings.json
+/settings.json.tmp
+/errors.log
+/probe-result.json
+/运行状态.json
+/selftest-result.txt
+/selftest-tail.tmp
+/ui-check-result.txt
+
+# Local builds, packages, and development references.
+/*.exe
+/*.next.exe.config
+/dist/
+/preview-frames/
+/upstream/
+/upstream-tree.json
+/assets-contact.png
+/界面优化前.png
+/挂件预览.png
+/挂件动效预览.gif
+/迷你预览.png
+/.vs/
+/.idea/
+/.vscode/
+*.user
+*.suo
+*.pdb
+*.log
+*.tmp
+.env
+.env.*
