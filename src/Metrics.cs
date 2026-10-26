@@ -192,7 +192,8 @@ namespace WhaleCompanion
                 if (replaced) { offset = 0; prefix = null; Metrics = new SessionMetrics(); pending.Clear(); discardOversize = false; }
                 if (offset == 0 && f.Length > TailBytes)
                 {
-                    // Bounded recovery. Expand only when a tail contains no usage counters.
+                    // A long turn can have usage counters in the tail but its start and
+                    // model outside it. Recover the paired baseline before computing rate.
                     long window = TailBytes;
                     do
                     {
@@ -201,7 +202,7 @@ namespace WhaleCompanion
                         offset = Math.Max(0, f.Length - window); f.Position = offset;
                         if (offset > 0) { int b; while ((b = f.ReadByte()) != -1) { offset++; if (b == 10) break; } }
                         ReadNew(f);
-                        if (Metrics.HasUsage || window >= f.Length) break;
+                        if ((Metrics.HasUsage && Metrics.HasBaseline && Metrics.TurnId.Length > 0 && Metrics.Model != "未知模型") || window >= f.Length) break;
                         window = Math.Min(f.Length, window * 2);
                     } while (true);
                 }
@@ -273,7 +274,14 @@ namespace WhaleCompanion
                 }
                 foreach (SessionTail tail in tails.Values) tail.Read();
                 if (!FollowLatest && tails.ContainsKey(PinnedPath)) SelectedPath = PinnedPath;
-                else if (tails.Count > 0) SelectedPath = tails.OrderByDescending(x => x.Value.Metrics.LastEventUtc).First().Key;
+                else
+                {
+                    // Approval reviews write their own rollouts after tool calls. They are not
+                    // the conversation's model, and must not steal automatic tracking.
+                    var latest = tails.Where(x => x.Value.Metrics.Model != "codex-auto-review")
+                        .OrderByDescending(x => x.Value.Metrics.LastEventUtc).FirstOrDefault();
+                    SelectedPath = latest.Key ?? "";
+                }
                 SessionTail selected;
                 published = tails.TryGetValue(SelectedPath, out selected) ? selected.Metrics.Snapshot() : null;
             }

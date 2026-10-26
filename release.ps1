@@ -50,7 +50,7 @@ foreach ($name in $portable.Keys) {
     if ($name.StartsWith('assets/') -or $name.StartsWith('licenses/')) { $source[$name] = $portable[$name] }
 }
 foreach ($file in (Get-ChildItem -LiteralPath (Join-Path $projectRoot 'src') -File -Filter '*.cs')) { $source['src/' + $file.Name] = $file.FullName }
-foreach ($name in @('demo.png', 'demo.gif', 'mini.png')) { $source['docs/images/' + $name] = Join-Path $projectRoot ('docs/images/' + $name) }
+foreach ($name in @('demo.png', 'demo.gif', 'mini.png', 'carrot.png')) { $source['docs/images/' + $name] = Join-Path $projectRoot ('docs/images/' + $name) }
 
 foreach ($file in @($portable.Values) + @($source.Values)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw ('Release input is missing: ' + $file) }

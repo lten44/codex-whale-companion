@@ -704,7 +704,7 @@ namespace WhaleCompanion
                 var source = ImageFor(pose);
                 if (source.PixelWidth != 512 || source.PixelHeight != 512) throw new InvalidOperationException("立绘大小不一致：" + pose);
             }
-            checks.Add("PASS loaded " + images.Count + " full-pose images");
+            checks.Add("PASS loaded " + images.Keys.Count(x => x.StartsWith("whale:", StringComparison.Ordinal)) + " full-pose images");
             foreach (double value in new double[] { 0.85, 1, 1.15, 1.25 })
             {
                 Program.Prefs.Scale = value; Program.Prefs.Compact = false; ApplyPreferences(); UpdateLayout();
@@ -745,27 +745,28 @@ namespace WhaleCompanion
             var bitmap = new RenderTargetBitmap(WidgetWidth, WidgetHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(stage);
             var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
             using (var stream = File.Create(System.IO.Path.Combine(Program.Root, "挂件预览.png"))) encoder.Save(stream);
+            ExportHighResolution("挂件高清预览.png");
             checks.Add("PASS exported actual WPF UI with synthetic demo metrics (not a benchmark)");
             string framesDir = System.IO.Path.Combine(Program.Root, "preview-frames"); Directory.CreateDirectory(framesDir);
             var demoTilt = new Spring(); var demoSqueeze = new Spring(); var demoHop = new Spring();
-            for (int frame = 0; frame < 72; frame++)
+            for (int frame = 0; frame < 240; frame++)
             {
-                double time = frame / 18.0;
+                double time = frame / 60.0;
                 if (frame == 0) pet.Source = ImageFor("daily-coffee");
-                if (frame == 18) { pet.Source = ImageFor("pick-up"); demoSqueeze.Velocity = 1.3; }
-                if (frame == 39) { pet.Source = ImageFor("blush"); demoSqueeze.Velocity = -2; demoHop.Velocity = -50 * PetSize / 238; }
-                if (frame == 56) { pet.Source = ImageFor("eat"); demoHop.Velocity = -70 * PetSize / 238; }
-                demoTilt.Step(frame >= 18 && frame < 39 ? Math.Sin(time * 5) * 10 : 0, 1.0 / 18);
-                demoSqueeze.Step(frame >= 18 && frame < 39 ? 0.05 : 0, 1.0 / 18); demoHop.Step(0, 1.0 / 18);
+                if (frame == 60) { pet.Source = ImageFor("pick-up"); demoSqueeze.Velocity = 1.3; }
+                if (frame == 130) { pet.Source = ImageFor("blush"); demoSqueeze.Velocity = -2; demoHop.Velocity = -50 * PetSize / 238; }
+                if (frame == 187) { pet.Source = ImageFor("eat"); demoHop.Velocity = -70 * PetSize / 238; }
+                demoTilt.Step(frame >= 60 && frame < 130 ? Math.Sin(time * 5) * 10 : 0, 1.0 / 60);
+                demoSqueeze.Step(frame >= 60 && frame < 130 ? 0.05 : 0, 1.0 / 60); demoHop.Step(0, 1.0 / 60);
                 petRotation.Angle = demoTilt.Value;
                 petScale.ScaleX = 1 - demoSqueeze.Value * 0.48 - Math.Sin(time * 3) * 0.006;
                 petScale.ScaleY = 1 + demoSqueeze.Value + Math.Sin(time * 3) * 0.014;
                 petShift.Y = demoHop.Value;
-                var animationFrame = new RenderTargetBitmap(WidgetWidth, WidgetHeight, 96, 96, PixelFormats.Pbgra32); animationFrame.Render(stage);
+                var animationFrame = CaptureHighResolution();
                 var png = new PngBitmapEncoder(); png.Frames.Add(BitmapFrame.Create(animationFrame));
                 using (var stream = File.Create(System.IO.Path.Combine(framesDir, frame.ToString("000") + ".png"))) png.Save(stream);
             }
-            checks.Add("PASS exported 72 animation frames using production spring physics (illustrative motion, not mouse automation)");
+            checks.Add("PASS exported 240 native 60fps frames at 1280x704 using production spring physics (illustrative motion, not mouse automation)");
             Program.Prefs.Scale = 0.85; ApplyPreferences(); UpdateLayout();
             var mini = new RenderTargetBitmap((int)Math.Ceiling(Width), (int)Math.Ceiling(Height), 96, 96, PixelFormats.Pbgra32); mini.Render(viewport);
             var miniEncoder = new PngBitmapEncoder(); miniEncoder.Frames.Add(BitmapFrame.Create(mini));
@@ -787,6 +788,7 @@ namespace WhaleCompanion
             var carrot = new RenderTargetBitmap(WidgetWidth, WidgetHeight, 96, 96, PixelFormats.Pbgra32); carrot.Render(stage);
             var carrotEncoder = new PngBitmapEncoder(); carrotEncoder.Frames.Add(BitmapFrame.Create(carrot));
             using (var stream = File.Create(System.IO.Path.Combine(Program.Root, "胡萝卜预览.png"))) carrotEncoder.Save(stream);
+            ExportHighResolution("胡萝卜高清预览.png");
             string carrotDir = System.IO.Path.Combine(Program.Root, "carrot-frames"); Directory.CreateDirectory(carrotDir);
             for (int i = 0; i < Skins.Poses.Length; i++)
             {
@@ -797,6 +799,72 @@ namespace WhaleCompanion
             if (Program.Prefs.Skin != "whale" || ImageFor("greet").PixelWidth != 512) throw new InvalidOperationException("切回鲸鱼娘失败");
             checks.Add("PASS switch back restores original whale art; exported actual carrot UI and 12 frames");
             File.WriteAllLines(System.IO.Path.Combine(Program.Root, "ui-check-result.txt"), checks);
+        }
+        private void ExportHighResolution(string filename)
+        {
+            var bitmap = CaptureHighResolution();
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using (var stream = File.Create(System.IO.Path.Combine(Program.Root, filename))) encoder.Save(stream);
+        }
+        private RenderTargetBitmap CaptureHighResolution()
+        {
+            // Effects rasterize their whole subtree at screen resolution. Keep the
+            // shadow on a separate backplate so export text stays vector-sharp.
+            var originalEffect = card.Effect;
+            var backplate = new Border { Width = card.Width, Height = card.Height, CornerRadius = card.CornerRadius,
+                Background = card.Background, Effect = originalEffect, IsHitTestVisible = false, Visibility = card.Visibility };
+            Canvas.SetLeft(backplate, Canvas.GetLeft(card)); Canvas.SetTop(backplate, Canvas.GetTop(card));
+            stage.Children.Insert(stage.Children.IndexOf(card), backplate); card.Effect = null;
+            try
+            {
+                stage.UpdateLayout();
+                var bitmap = new RenderTargetBitmap(WidgetWidth * 4, WidgetHeight * 4, 384, 384, PixelFormats.Pbgra32); bitmap.Render(stage);
+                // WPF can retain small hinted glyphs even after an effect is removed.
+                // Export the live controls' geometry and text at the target pixel size.
+                var vector = new DrawingVisual();
+                using (DrawingContext drawing = vector.RenderOpen())
+                {
+                    drawing.DrawImage(bitmap, new Rect(0, 0, WidgetWidth * 4, WidgetHeight * 4));
+                    if (card.Visibility == Visibility.Visible)
+                    {
+                        Point origin = card.TransformToAncestor(stage).Transform(new Point());
+                        var fill = card.Background.CloneCurrentValue() as LinearGradientBrush;
+                        if (fill != null) foreach (var stop in fill.GradientStops) stop.Color = Color.FromRgb(stop.Color.R, stop.Color.G, stop.Color.B);
+                        drawing.DrawRoundedRectangle(fill ?? card.Background, new Pen(card.BorderBrush, 4), new Rect(origin.X * 4, origin.Y * 4, card.Width * 4, card.Height * 4), card.CornerRadius.TopLeft * 4, card.CornerRadius.TopLeft * 4);
+                        foreach (UIElement element in ((Canvas)card.Child).Children)
+                        {
+                            var label = element as TextBlock;
+                            if (label != null)
+                            {
+                                Point p = label.TransformToAncestor(stage).Transform(new Point());
+                                var text = new FormattedText(label.Text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                                    new Typeface(label.FontFamily, label.FontStyle, label.FontWeight, label.FontStretch), label.FontSize * 4, label.Foreground, 1.0);
+                                drawing.DrawText(text, new Point(p.X * 4, p.Y * 4));
+                            }
+                            var line = element as Line;
+                            if (line != null)
+                            {
+                                Point p = line.TransformToAncestor(stage).Transform(new Point());
+                                drawing.DrawLine(new Pen(line.Stroke, line.StrokeThickness * 4), new Point((p.X + line.X1) * 4, (p.Y + line.Y1) * 4), new Point((p.X + line.X2) * 4, (p.Y + line.Y2) * 4));
+                            }
+                            var graph = element as Polyline;
+                            if (graph != null)
+                            {
+                                Point p = graph.TransformToAncestor(stage).Transform(new Point());
+                                drawing.PushOpacity(graph.Opacity);
+                                for (int i = 1; i < graph.Points.Count; i++) drawing.DrawLine(new Pen(graph.Stroke, graph.StrokeThickness * 4), new Point((p.X + graph.Points[i - 1].X) * 4, (p.Y + graph.Points[i - 1].Y) * 4), new Point((p.X + graph.Points[i].X) * 4, (p.Y + graph.Points[i].Y) * 4));
+                                drawing.Pop();
+                            }
+                        }
+                        drawing.PushTransform(new TranslateTransform((PetLeft + PetSize * 0.5) * 4, (PetTop + PetSize * 0.72) * 4));
+                        drawing.PushTransform(new ScaleTransform(4, 4)); drawing.PushTransform(pet.RenderTransform);
+                        drawing.DrawImage(pet.Source, new Rect(-PetSize * 0.5, -PetSize * 0.72, PetSize, PetSize));
+                        drawing.Pop(); drawing.Pop(); drawing.Pop();
+                    }
+                }
+                var sharp = new RenderTargetBitmap(WidgetWidth * 4, WidgetHeight * 4, 96, 96, PixelFormats.Pbgra32); sharp.Render(vector); return sharp;
+            }
+            finally { card.Effect = originalEffect; stage.Children.Remove(backplate); }
         }
     }
 }

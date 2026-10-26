@@ -103,6 +103,36 @@ namespace WhaleCompanion
                 }
                 finally { if (File.Exists(temp)) File.Delete(temp); }
 
+                string fixtureRoot = Path.Combine(Program.Root, "selftest-monitor-" + Guid.NewGuid().ToString("N"));
+                string year = Path.Combine(fixtureRoot, "sessions", DateTime.Now.ToString("yyyy"));
+                string month = Path.Combine(year, DateTime.Now.ToString("MM"));
+                string day = Path.Combine(month, DateTime.Now.ToString("dd"));
+                Directory.CreateDirectory(day);
+                string userLog = Path.Combine(day, "user.jsonl"), reviewLog = Path.Combine(day, "review.jsonl");
+                try
+                {
+                    File.WriteAllText(userLog, "{\"type\":\"turn_context\",\"payload\":{\"model\":\"test-user-model\"}}\n" + Usage(1000, 800, 100) + "\n" + Start("normal") + "\n" + Usage(1200, 900, 140) + "\n" + Item("normal", "answer", "AgentMessage", 1000, 3000) + "\n");
+                    File.WriteAllText(reviewLog, "{\"timestamp\":\"2099-01-01T00:00:00Z\",\"type\":\"turn_context\",\"payload\":{\"model\":\"codex-auto-review\"}}\n");
+                    var automatic = new SessionMonitor(fixtureRoot); automatic.Poll();
+                    Check(automatic.SelectedPath == userLog && automatic.Current.Model == "test-user-model" && automatic.Current.Speed == 20,
+                        "newer internal approval review cannot steal automatic tracking or speed");
+                    var pinned = new SessionMonitor(fixtureRoot) { FollowLatest = false, PinnedPath = reviewLog }; pinned.Poll();
+                    Check(pinned.SelectedPath == reviewLog, "explicitly pinned session selection remains respected");
+                    File.Delete(userLog); var reviewsOnly = new SessionMonitor(fixtureRoot); reviewsOnly.Poll();
+                    Check(reviewsOnly.Current == null && reviewsOnly.SelectedPath == "", "internal reviews alone do not masquerade as a conversation");
+                    File.WriteAllText(userLog, "{\"type\":\"turn_context\",\"payload\":{\"model\":\"long-turn-model\"}}\n" + Usage(1000, 800, 100) + "\n" + Start("long") + "\n{\"type\":\"response_item\",\"payload\":{\"padding\":\"" + new string('x', 4 * 1024 * 1024 + 100) + "\"}}\n" + Usage(1200, 900, 140) + "\n" + Item("long", "long-answer", "AgentMessage", 1000, 3000) + "\n");
+                    var longTail = new SessionTail(userLog); longTail.Read();
+                    Check(longTail.Metrics.Model == "long-turn-model" && longTail.Metrics.Speed == 20 && longTail.Metrics.HasBaseline,
+                        "restart during a turn larger than tail window recovers model and paired baseline");
+                }
+                finally
+                {
+                    if (File.Exists(userLog)) File.Delete(userLog);
+                    if (File.Exists(reviewLog)) File.Delete(reviewLog);
+                    Directory.Delete(day); Directory.Delete(month); Directory.Delete(year);
+                    Directory.Delete(Path.Combine(fixtureRoot, "sessions")); Directory.Delete(fixtureRoot);
+                }
+
                 var spring = new Spring { Value = 0.25, Velocity = 2 };
                 for (int i = 0; i < 600; i++) spring.Step(0, 1.0 / 60);
                 Check(Math.Abs(spring.Value) < 0.000001 && Math.Abs(spring.Velocity) < 0.000001, "spring settles");
